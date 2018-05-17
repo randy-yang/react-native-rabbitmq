@@ -6,6 +6,17 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Objects;
 
+import java.io.IOException;
+import java.security.KeyManagementException;
+import java.security.NoSuchAlgorithmException;
+import java.security.cert.CertificateException;
+import java.security.cert.X509Certificate;
+import java.util.concurrent.TimeoutException;
+
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
+
 import com.facebook.react.modules.core.DeviceEventManagerModule;
 
 import com.facebook.react.bridge.Arguments;
@@ -58,7 +69,40 @@ class RabbitMqConnection extends ReactContextBaseJavaModule  {
     public void initialize(ReadableMap config) {
         this.config = config;
 
+        SSLContext c = null;
+        try {
+            TrustManager[] trustManagers = new TrustManager[] {
+                new X509TrustManager() {
+                    @Override
+                    public void checkClientTrusted(X509Certificate[] chain, String authType)
+                            throws CertificateException {
+                        // TODO Auto-generated method stub
+
+                    }
+
+                    @Override
+                    public void checkServerTrusted(X509Certificate[] chain, String authType)
+                            throws CertificateException {
+                        // TODO Auto-generated method stub
+
+                    }
+
+                    @Override
+                    public X509Certificate[] getAcceptedIssuers() {
+                        // TODO Auto-generated method stub
+                        return null;
+                    }
+                }
+            };
+
+            c = SSLContext.getInstance("TLSv1.1");
+            c.init(null, trustManagers, null);
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+
         this.factory = new ConnectionFactory();
+        this.factory.useSslProtocol(c);
         this.factory.setUsername(this.config.getString("username"));
         this.factory.setPassword(this.config.getString("password"));
         this.factory.setVirtualHost(this.config.getString("virtualhost"));
