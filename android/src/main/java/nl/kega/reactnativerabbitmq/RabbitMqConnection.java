@@ -102,7 +102,6 @@ class RabbitMqConnection extends ReactContextBaseJavaModule  {
         }
 
         this.factory = new ConnectionFactory();
-        this.factory.useSslProtocol(c);
         this.factory.setUsername(this.config.getString("username"));
         this.factory.setPassword(this.config.getString("password"));
         this.factory.setVirtualHost(this.config.getString("virtualhost"));
@@ -110,6 +109,9 @@ class RabbitMqConnection extends ReactContextBaseJavaModule  {
         this.factory.setPort(this.config.getInt("port"));
         this.factory.setAutomaticRecoveryEnabled(true);
         this.factory.setRequestedHeartbeat(10);
+        if (this.config.getInt("port") == 5671) {
+            this.factory.useSslProtocol(c);
+        }
 
     }
 
@@ -126,7 +128,7 @@ class RabbitMqConnection extends ReactContextBaseJavaModule  {
             event.putString("name", "connected");
 
             this.context.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class).emit("RabbitMqConnectionEvent", event);
-        }else{ 
+        }else{
 
             try {
                 this.connection = (RecoverableConnection)this.factory.newConnection();
@@ -140,7 +142,7 @@ class RabbitMqConnection extends ReactContextBaseJavaModule  {
 
                 this.context.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class).emit("RabbitMqConnectionEvent", event);
 
-                this.connection = null; 
+                this.connection = null;
 
             }
 
@@ -151,27 +153,27 @@ class RabbitMqConnection extends ReactContextBaseJavaModule  {
                     this.connection.addShutdownListener(new ShutdownListener() {
                         @Override
                         public void shutdownCompleted(ShutdownSignalException cause) {
-                            Log.e("RabbitMqConnection", "Shutdown signal received " + cause);
+                            Log.i("RabbitMqConnection", "Shutdown signal received " + cause);
                             onClose(cause);
                         }
                     });
 
-                 
+
                     this.connection.addRecoveryListener(new RecoveryListener() {
-                      
+
                         @Override
                         public void handleRecoveryStarted(Recoverable recoverable) {
-                            Log.e("RabbitMqConnection", "RecoveryStarted " + recoverable);
+                            Log.i("RabbitMqConnection", "RecoveryStarted " + recoverable);
                         }
-                      
+
                         @Override
                         public void handleRecovery(Recoverable recoverable) {
-                            Log.e("RabbitMqConnection", "Recoverable " + recoverable);
+                            Log.i("RabbitMqConnection", "Recoverable " + recoverable);
                             onRecovered();
                         }
-                        
+
                     });
-                   
+
 
                     this.channel = connection.createChannel();
                     this.channel.basicQos(1);
@@ -186,7 +188,7 @@ class RabbitMqConnection extends ReactContextBaseJavaModule  {
                     Log.e("RabbitMqConnectionChannel", "Create channel error " + e);
                     e.printStackTrace();
 
-                } 
+                }
             }
         }
     }
@@ -283,7 +285,7 @@ class RabbitMqConnection extends ReactContextBaseJavaModule  {
 
          for (RabbitMqExchange exchange : exchanges) {
 		    if (Objects.equals(exchange_name, exchange.name)){
-                Log.e("RabbitMqConnection", "Exchange publish: " + message);
+                Log.i("RabbitMqConnection", "Exchange publish: " + message);
                 exchange.publish(message, routing_key, message_properties);
                 return;
             }
@@ -306,6 +308,17 @@ class RabbitMqConnection extends ReactContextBaseJavaModule  {
     @ReactMethod
     public void close() {
         try {
+            if (this.queues != null && this.queues.size() > 0) {
+                for (RabbitMqQueue qu : this.queues) {
+                    qu.delete();
+                }
+            }
+
+            if (this.exchanges != null && this.exchanges.size() > 0) {
+                for (RabbitMqExchange ex : this.exchanges) {
+                    ex.delete(false);
+                }
+            }
 
             this.queues = new ArrayList<RabbitMqQueue>();
             this.exchanges = new ArrayList<RabbitMqExchange>(); 
@@ -323,8 +336,8 @@ class RabbitMqConnection extends ReactContextBaseJavaModule  {
         } 
     }
 
-    private void onClose(ShutdownSignalException cause) { 
-        Log.e("RabbitMqConnection", "Closed");
+    private void onClose(ShutdownSignalException cause) {
+        Log.i("RabbitMqConnection", "Closed");
 
         WritableMap event = Arguments.createMap();
         event.putString("name", "closed");
@@ -332,8 +345,8 @@ class RabbitMqConnection extends ReactContextBaseJavaModule  {
         this.context.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class).emit("RabbitMqConnectionEvent", event);
     } 
 
-    private void onRecovered() { 
-        Log.e("RabbitMqConnection", "Recovered");
+    private void onRecovered() {
+        Log.i("RabbitMqConnection", "Recovered");
 
         WritableMap event = Arguments.createMap();
         event.putString("name", "reconnected");

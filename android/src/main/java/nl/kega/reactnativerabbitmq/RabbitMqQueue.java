@@ -59,7 +59,7 @@ public class RabbitMqQueue {
     }
 
     public void onMessage(WritableMap message){
-        Log.e("RabbitMqQueue", message.getString("message"));
+        Log.d("RabbitMqQueue", message.getString("message"));
 
         message.putString("queue_name", this.name);
 
@@ -169,7 +169,7 @@ public class RabbitMqQueue {
                     }
                     break;
                 case String:
-                    Log.e("RabbitMqQueue", data.getString(key));
+                    Log.d("RabbitMqQueue", data.getString(key));
                     args.put(key, data.getString(key));
                     break;
 
