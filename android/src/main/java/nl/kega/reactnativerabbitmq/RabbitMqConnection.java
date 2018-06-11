@@ -1,10 +1,13 @@
 package nl.kega.reactnativerabbitmq;
 
 import android.util.Log;
+import android.os.AsyncTask;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Objects;
+import java.util.Map;
+import java.util.HashMap;
 
 import java.io.IOException;
 import java.security.KeyManagementException;
@@ -109,6 +112,7 @@ class RabbitMqConnection extends ReactContextBaseJavaModule  {
         this.factory.setPort(this.config.getInt("port"));
         this.factory.setAutomaticRecoveryEnabled(true);
         this.factory.setRequestedHeartbeat(10);
+        this.factory.setConnectionTimeout(30000);
         if (this.config.getInt("port") == 5671) {
             this.factory.useSslProtocol(c);
         }
@@ -122,75 +126,9 @@ class RabbitMqConnection extends ReactContextBaseJavaModule  {
 
     @ReactMethod
     public void connect() {
-
-        if (this.connection != null && this.connection.isOpen()){
-            WritableMap event = Arguments.createMap();
-            event.putString("name", "connected");
-
-            this.context.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class).emit("RabbitMqConnectionEvent", event);
-        }else{
-
-            try {
-                this.connection = (RecoverableConnection)this.factory.newConnection();
-            } catch (Exception e){
-
-                WritableMap event = Arguments.createMap();
-                event.putString("name", "error");
-                event.putString("type", "failedtoconnect");
-                event.putString("code", "");
-                event.putString("description", e.getMessage());
-
-                this.context.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class).emit("RabbitMqConnectionEvent", event);
-
-                this.connection = null;
-
-            }
-
-            if (this.connection != null){
-
-                try {
-
-                    this.connection.addShutdownListener(new ShutdownListener() {
-                        @Override
-                        public void shutdownCompleted(ShutdownSignalException cause) {
-                            Log.i("RabbitMqConnection", "Shutdown signal received " + cause);
-                            onClose(cause);
-                        }
-                    });
-
-
-                    this.connection.addRecoveryListener(new RecoveryListener() {
-
-                        @Override
-                        public void handleRecoveryStarted(Recoverable recoverable) {
-                            Log.i("RabbitMqConnection", "RecoveryStarted " + recoverable);
-                        }
-
-                        @Override
-                        public void handleRecovery(Recoverable recoverable) {
-                            Log.i("RabbitMqConnection", "Recoverable " + recoverable);
-                            onRecovered();
-                        }
-
-                    });
-
-
-                    this.channel = connection.createChannel();
-                    this.channel.basicQos(1);
-
-                    WritableMap event = Arguments.createMap();
-                    event.putString("name", "connected");
-
-                    this.context.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class).emit("RabbitMqConnectionEvent", event);
-
-                } catch (Exception e){
-
-                    Log.e("RabbitMqConnectionChannel", "Create channel error " + e);
-                    e.printStackTrace();
-
-                }
-            }
-        }
+        // async execute to prevent UI freeze
+        // connection 要使用非同步處理，不然畫面會凍結 (連很久連不上時)
+        new ConnectionAsyncTask().execute();
     }
 
     @ReactMethod
@@ -322,10 +260,14 @@ class RabbitMqConnection extends ReactContextBaseJavaModule  {
 
             this.queues = new ArrayList<RabbitMqQueue>();
             this.exchanges = new ArrayList<RabbitMqExchange>(); 
-            
-            this.channel.close();
 
-            this.connection.close();
+            if (this.channel != null) {
+                this.channel.close();
+            }
+
+            if (this.connection != null) {
+                this.connection.close();
+            }
          } catch (Exception e){
             Log.e("RabbitMqConnection", "Connection closing error " + e);
             e.printStackTrace();
@@ -352,7 +294,86 @@ class RabbitMqConnection extends ReactContextBaseJavaModule  {
         event.putString("name", "reconnected");
 
         this.context.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class).emit("RabbitMqConnectionEvent", event);
-    } 
+    }
+
+    private class ConnectionAsyncTask extends AsyncTask<Void, Integer, Void> {
+
+        @Override
+        protected Void doInBackground(Void... arg) {
+            if (connection != null && connection.isOpen()){
+                WritableMap event = Arguments.createMap();
+                event.putString("name", "connected");
+
+                context.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class).emit("RabbitMqConnectionEvent", event);
+            } else {
+
+                try {
+                    connection = (RecoverableConnection)factory.newConnection();
+                } catch (Exception e) {
+
+                    WritableMap event = Arguments.createMap();
+                    event.putString("name", "error");
+                    event.putString("type", "failedtoconnect");
+                    event.putString("code", "");
+                    event.putString("description", e.getMessage());
+
+                    context.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class).emit("RabbitMqConnectionEvent", event);
+
+                    connection = null;
+
+                }
+
+                if (connection != null) {
+
+                    try {
+
+                        connection.addShutdownListener(new ShutdownListener() {
+                            @Override
+                            public void shutdownCompleted(ShutdownSignalException cause) {
+                                Log.i("RabbitMqConnection", "Shutdown signal received " + cause);
+                                onClose(cause);
+                            }
+                        });
 
 
+                        connection.addRecoveryListener(new RecoveryListener() {
+
+                            @Override
+                            public void handleRecoveryStarted(Recoverable recoverable) {
+                                Log.i("RabbitMqConnection", "RecoveryStarted " + recoverable);
+                            }
+
+                            @Override
+                            public void handleRecovery(Recoverable recoverable) {
+                                Log.i("RabbitMqConnection", "Recoverable " + recoverable);
+                                onRecovered();
+                            }
+
+                        });
+
+
+                        channel = connection.createChannel();
+                        channel.basicQos(1);
+
+                        WritableMap event = Arguments.createMap();
+                        event.putString("name", "connected");
+
+                        context.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class).emit("RabbitMqConnectionEvent", event);
+
+                    } catch (Exception e) {
+                        Log.e("RabbitMqConnectionChannel", "Create channel error " + e);
+                        e.printStackTrace();
+                    }
+                }
+            }
+            return null;
+        }
+
+        @Override
+        protected void onProgressUpdate(Integer... progress)
+        {
+            // 這裡接收傳入的 progress 值, 並更新進度表畫面
+            // 參數是 Integer 型態的陣列
+        }
+    }
 }
